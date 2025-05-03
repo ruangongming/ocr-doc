@@ -1,92 +1,195 @@
-# OCR DOC
+📄 OCR Micro‑service Suite
 
-OCR Doc File
+Bộ ứng dụng trích xuất văn bản (OCR) đa nền tảng, tách rời API (FastAPI) và Front‑End (Streamlit), sử dụng mô hình Mistral (local .gguf hoặc Cloud API). Dự án hỗ trợ chạy cục bộ, Docker‑Compose và triển khai CI/CD qua GitLab CI.
 
-## Getting started
+TL;DR: docker compose -f docker/docker-compose.yaml up --build → mở http://localhost:8501.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
 
-## Add your files
+✨ Tính năng
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+Kiến trúc micro‑service
+
+api/ : FastAPI REST – nhận file/URL, trả về JSON OCR.
+
+fe/ : Streamlit UI – upload, so sánh, chỉnh sửa & tải kết quả.
+
+Ba chế độ nhận diện local‑7b · local‑14b · cloud (qua MISTRAL_API_KEY).
+
+Upload đa định dạng PDF/PNG/JPG/JPEG, hỗ trợ kéo‑thả nhiều file.
+
+Chỉnh sửa trực tiếp & tải xuống TXT / Markdown / JSON / ZIP phiên.
+
+Docker hoá : một lệnh khởi chạy toàn bộ stack (API + FE + worker).
+
+CI/CD : .gitlab-ci.yml build image, chạy test & deploy.
+
+🚀 Khởi chạy nhanh
+
+0. Thiết lập môi trường Python
+
+Yêu cầu Python ≥ 3.10.
+
+# (a) Dùng venv mặc định
+```
+python -m venv .venv
+```
+# macOS / Linux
+```
+source .venv/bin/activate
+```
+# Windows (PowerShell)
+```
+.venv\Scripts\Activate.ps1
+```
+
+# (b) Hoặc dùng Conda
+```
+conda create -n ocr python=3.10
+conda activate ocr
+```
+1. Tái sử dụng mã nguồn & cấu hình
+
+# Clone
 
 ```
-cd existing_repo
-git remote add origin https://scm.hysmart.vn/minhnc1/ocr-doc.git
-git branch -M main
-git push -uf origin main
+git clone https://github.com/ruangongming/ocr-doc.git
+cd ocr-doc
 ```
 
-## Integrate with your tools
+# Tạo file .env
+```
+cp config/.env.sample config/.env
+```
 
-- [ ] [Set up project integrations](https://scm.hysmart.vn/minhnc1/ocr-doc/-/settings/integrations)
+2. Cài phụ thuộc Python
 
-## Collaborate with your team
+requirements.txt gom tất cả thư viện chung cho API và FE.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+```
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-## Test and Deploy
 
-Use the built-in continuous integration in GitLab.
+3. Chạy bằng Docker Compose (production‑like)
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+docker compose -f docker/docker-compose.yaml up --build
 
-***
+FE: http://localhost:8501
 
-# Editing this README
+API: http://localhost:8000/docs (Swagger UI)
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+4. Chạy thủ công (môi trường phát triển)
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+# API – Tab 1
+```
+cd api
+uvicorn app:app --reload --port 8000
+```
 
-## Name
-Choose a self-explaining name for your project.
+# FE – Tab 2
+```
+cd fe
+export API_URL=http://localhost:8000   # Windows: set API_URL=http://localhost:8000
+streamlit run main.py
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+☝️ One‑file demo (tuỳ chọn)
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+Muốn thử nhanh tất cả trong một, chỉ cần:
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+streamlit run stand.py
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Ứng dụng sẽ tự khởi tạo cả OCR và giao diện.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+🗂 Cấu trúc dự án
+```
+.
+├── api/                  # FastAPI service
+│   └── app.py
+├── fe/                   # Streamlit front‑end
+│   └── main.py
+├── config/
+│   ├── .env              # Biến môi trường (không commit)
+│   └── .env.sample
+├── docker/
+│   └── docker-compose.yaml
+├── requirements.txt      # Phụ thuộc chung
+├── stand.py              # Phiên bản Streamlit đơn lẻ (legacy)
+├── .gitlab-ci.yml        # Pipeline CI/CD
+└── README.md
+```
+🔧 Biến môi trường quan trọng (config/.env)
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Tên biến
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+Mô tả
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+Giá trị mẫu
+```
+MISTRAL_API_KEY
+```
+Khoá truy cập Mistral Cloud
+```
+sk‑...
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+OCR_MODEL_7B
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+Đường dẫn .gguf của model 7B
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+models/7B.gguf
 
-## License
-For open source projects, say how it is licensed.
+OCR_MODEL_14B
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Đường dẫn .gguf của model 14B
+
+models/14B.gguf
+```
+```
+API_PORT
+
+Cổng phục vụ FastAPI
+
+8000
+
+FE_PORT
+
+Cổng phục vụ Streamlit
+
+8501
+```
+```
+♾️ CI/CD (GitLab)
+
+Pipeline gồm 3 stage chính:
+
+test – chạy pytest + ruff.
+
+build – đóng gói image Docker, đẩy lên Registry.
+
+deploy – triển khai tới server qua SSH.
+
+Tuỳ chỉnh trong .gitlab-ci.yml.
+```
+```
+🗺️ Lộ trình tương lai
+
+```
+
+Đóng góp ý tưởng bằng Issue / Merge‑Request ❤️
+
+🤝 Đóng góp
+
+Fork & tạo nhánh feature.
+
+Chạy pre-commit install.
+
+Viết test kèm theo.
+
+Mở MR kèm mô tả chi tiết.
+
+📜 License
+
+MIT © 2025 [Nguyen Cong Minh]
+
