@@ -1,4 +1,13 @@
-# FROM ubuntu:latest
-# LABEL authors="MSI"
-
-# ENTRYPOINT ["top", "-b"]
+services:
+  api:
+    build:
+      context: .                 # gốc repo
+      dockerfile: api/Dockerfile
+    image: ocr-api:3.13
+    container_name: ocr_api
+    env_file: .env
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
