@@ -3,7 +3,7 @@ services:
     build:
       context: .                 # gốc repo
       dockerfile: api/Dockerfile
-    image: ocr-api:3.13
+    image: ocr-api:1.0
     container_name: ocr_api
     env_file: .env
     volumes:
