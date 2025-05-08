@@ -1,0 +1,9 @@
+setup.py
+ocr_doc_utils/__init__.py
+ocr_doc_utils/postprocess.py
+ocr_doc_utils/schemas.py
+ocr_doc_utils/utils.py
+ocr_doc_utils.egg-info/PKG-INFO
+ocr_doc_utils.egg-info/SOURCES.txt
+ocr_doc_utils.egg-info/dependency_links.txt
+ocr_doc_utils.egg-info/top_level.txt

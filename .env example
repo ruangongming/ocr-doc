@@ -1,0 +1,9 @@
+.env example
+# Chế độ chạy OCR: local chạy model offline, api gọi Mistral Cloud
+OCR_MODE=api
+
+# Nếu bạn để local thì có thể thêm đường dẫn model local (nếu cần)
+# LOCAL_MODEL_PATH=/models/gguf/mistral-small.gguf
+
+# API key lấy từ Mistral Cloud
+MISTRAL_API_KEY=your-mistral-api-key-here

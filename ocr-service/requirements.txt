@@ -1,0 +1,8 @@
+# ocr-service/requirements.txt
+fastapi
+uvicorn[standard]
+python-multipart
+pdf2image
+pillow
+# – client OCR, LLM, v.v. nếu có
+mistralai

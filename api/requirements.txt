@@ -1,5 +1,4 @@
 fastapi
 uvicorn[standard]
-pydantic
+requests
 python-multipart
-mistralai

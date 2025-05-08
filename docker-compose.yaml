@@ -1,13 +1,35 @@
+#docker-compose.yaml
 services:
+  ocr-service:
+    build:
+      context: .
+      dockerfile: ocr-service/Dockerfile
+    ports:
+      - "9000:9000"
+    environment:
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+    volumes:
+      - data:/data
+
   api:
     build:
-      context: .                 # gốc repo
+      context: .
       dockerfile: api/Dockerfile
-    image: ocr-api:1.0
-    container_name: ocr-api
-    env_file: .env
-    volumes:
-      - ./data:/data
     ports:
       - "8000:8000"
-    restart: unless-stopped
+    depends_on:
+      - ocr-service
+    environment:
+      - OCR_SERVICE_URL=http://ocr-service:9000/process
+
+  fe:
+    build:
+      context: .
+      dockerfile: fe/Dockerfile
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+
+volumes:
+  data:
