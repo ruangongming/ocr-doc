@@ -25,6 +25,20 @@ st.markdown(
     """
     <style>
     .reportview-container .main .block-container{max-width:100%!important; padding:1rem 2rem;}
+    /* Ẩn tất cả các nút hiển thị mật khẩu */
+    button[title="Show password"],
+    button[title="Show password text"],
+    div[data-testid="stPasswordField"] button,
+    div[data-testid="stTextInput"] button,
+    input[type="password"] ~ button {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        pointer-events: none !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -48,6 +62,24 @@ def auto_download(bytes_data: bytes, mime: str, filename: str):
     js = f"<script>document.getElementById('{element_id}').click();</script>"
     st.markdown(href + js, unsafe_allow_html=True)
 
+# Kiểm tra tính hợp lệ của API key
+def validate_api_key(api_key):
+    try:
+        # Gửi request kiểm tra đến API
+        response = requests.post(
+            "http://api:8000/ocr/validate",
+            json={"api_key": api_key}
+        )
+        
+        # Kiểm tra kết quả
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("valid", False)
+        return False
+    except Exception as e:
+        st.error(f"Lỗi kiểm tra API key: {str(e)}")
+        return False
+
 # ============================================================
 # Khởi tạo session_state mặc định
 # ============================================================
@@ -58,6 +90,8 @@ st.session_state.setdefault("current_session", None)
 st.session_state.setdefault("ocr_running", False)
 st.session_state.setdefault("zip_buffer", None)
 st.session_state.setdefault("zip_name", None)
+st.session_state.setdefault("custom_api_key", "")
+st.session_state.setdefault("use_custom_api_key", False)
 
 # ============================================================
 # Tiêu đề & mô tả
@@ -87,7 +121,8 @@ with st.sidebar:
         "Phương pháp OCR:", 
         ["Mistral OCR (API)", "Mistral OCR (Local)"], 
         index=0 if default_ocr_mode == "api" else 1,
-        key="ocr_method"
+        key="ocr_method",
+        help="Lựa chọn phương pháp OCR!"
     )
 
     # Xử lý tùy theo phương pháp được chọn
@@ -109,17 +144,60 @@ with st.sidebar:
         st.markdown(f"**Đường dẫn:** `{models[local_model]}`")
     else:
         # Lấy API key từ .env
-        api_key = os.getenv("MISTRAL_API_KEY", "")
-        api_key_displayed = st.text_input(
-            "API Key:", 
-            value=api_key,
-            type="password", 
-            key="api_key", 
-            disabled=True,
-            help="API Key được cấu hình trong file .env"
-        )
-        if not api_key:
-            st.error("Thiếu API Key trong file .env")
+        default_api_key = os.getenv("MISTRAL_API_KEY", "")
+        
+        # Thêm chức năng thay đổi API key
+        change_api = st.checkbox("Thay đổi API Key", value=st.session_state.get("change_api_key", False))
+        
+        # Kiểm tra nếu trạng thái checkbox thay đổi
+        if change_api != st.session_state.get("change_api_key", False):
+            # Nếu vừa mới check, reset giá trị input
+            if change_api:
+                st.session_state["temp_api_key"] = ""
+            st.session_state["change_api_key"] = change_api
+        
+        # Hiển thị API key đã được cấu hình hoặc ô nhập API key mới
+        if change_api:
+            # Hiển thị ô nhập API key mới
+            custom_api_key = st.text_input(
+                "API Key:", 
+                value=st.session_state.get("temp_api_key", ""),
+                type="password", 
+                key="input_custom_api_key",
+                help="API Key đã được cấu hình, không hiển thị!"
+            )
+            
+            # Lưu giá trị tạm thời
+            st.session_state["temp_api_key"] = custom_api_key
+            
+            if custom_api_key and custom_api_key != st.session_state.get("custom_api_key", ""):
+                # Tự động kiểm tra khi API key thay đổi
+                is_valid = validate_api_key(custom_api_key)
+                if is_valid:
+                    st.session_state["custom_api_key"] = custom_api_key
+                    st.session_state["use_custom_api_key"] = True
+                    # Tự động ẩn ô input sau khi nhập thành công
+                    st.session_state["change_api_key"] = False
+                    st.session_state["temp_api_key"] = ""
+                    st.success("API Key hợp lệ và đã được áp dụng!")
+                    st.rerun()  # Rerun để cập nhật UI ngay lập tức
+                else:
+                    st.error("API Key không hợp lệ, vui lòng kiểm tra lại!")
+        else:
+            # Hiển thị API key đã được cấu hình với help text
+            if default_api_key or st.session_state.get("use_custom_api_key", False):
+                st.text_input(
+                    "API Key:", 
+                    value="••••••••••••••••••••••••",
+                    disabled=True,
+                    key="api_key_display",
+                    help="API Key đã được cấu hình, không hiển thị!"
+                )
+            else:
+                st.error("Thiếu API Key trong file .env")
+        
+        # Sử dụng API key nào
+        api_key = st.session_state.get("custom_api_key", "") if st.session_state.get("use_custom_api_key", False) else default_api_key
 
     st.markdown("---")
 
@@ -129,9 +207,21 @@ with st.sidebar:
 
     uploaded_files, raw_urls = [], ""
     if source_type == "Upload File":
+        # Lấy trạng thái trước đó để biết khi nào số lượng file thay đổi
+        prev_upload_count = st.session_state.get("prev_upload_count", 0)
+        
         uploaded_files = st.file_uploader(
             "Chọn PDF/Ảnh", accept_multiple_files=True, type=["pdf", "png", "jpg", "jpeg"]
         )
+        
+        # Hiển thị số lượng file đã upload
+        if uploaded_files:
+            current_count = len(uploaded_files)
+            # Hiển thị thông báo nếu số lượng file thay đổi
+            if current_count != prev_upload_count:
+                st.session_state["prev_upload_count"] = current_count
+                # Sử dụng success message thay vì toast
+                st.success(f"Đã tải lên {current_count} file")
     else:
         raw_urls = st.text_area(
             "URL (.pdf/.png/.jpg/.jpeg):", 
@@ -155,12 +245,17 @@ with st.sidebar:
     run_disabled = (
         not sources or 
         st.session_state["ocr_running"] or 
-        (ocr_method == "Mistral OCR (API)" and not api_key)
+        (ocr_method == "Mistral OCR (API)" and not (st.session_state.get("custom_api_key", "") if st.session_state.get("use_custom_api_key", False) else default_api_key))
     )
     if st.button("Thực hiện OCR", disabled=run_disabled):
         st.session_state["zip_buffer"] = None
         st.session_state["zip_name"] = None
         st.session_state["ocr_running"] = True
+        
+        # Lưu API key hiện tại vào session state để sử dụng khi gọi OCR
+        if ocr_method == "Mistral OCR (API)":
+            st.session_state["current_api_key"] = st.session_state.get("custom_api_key", "") if st.session_state.get("use_custom_api_key", False) else default_api_key
+        
         st.rerun()
 
     # ---- Chọn phiên lịch sử ----
@@ -183,23 +278,80 @@ with st.sidebar:
         )
 
 # ============================================================
-# Preview của sources (nếu chưa chạy)
+# Preview của sources (nếu chưa chạy và không có kết quả hiển thị)
 # ============================================================
 
 preview_container = st.container()
-if sources and not st.session_state["ocr_running"]:
+show_preview = sources and not st.session_state["ocr_running"] and not st.session_state.get("current_session")
+
+if show_preview:
     with preview_container:
         st.markdown("---"); st.header("Xem trước nguồn")
-        for src in sources:
+        
+        # Tạo list tên nguồn cho selectbox
+        source_names = []
+        for i, src in enumerate(sources, 1):
+            if isinstance(src, str):
+                name = os.path.basename(src)
+            else:
+                name = src.name if hasattr(src, "name") else f"File {i}"
+            source_names.append(name)
+        
+        # Nếu có nhiều nguồn, sử dụng selectbox để chọn nguồn xem trước
+        if len(sources) > 1:
+            st.write(f"**Số nguồn: {len(sources)}**")
+            selected_idx = st.selectbox(
+                "Chọn nguồn để xem trước:",
+                range(len(sources)),
+                format_func=lambda i: source_names[i],
+                key="preview_selectbox"
+            )
+            selected_sources = [sources[selected_idx]]
+            st.write(f"**Đang xem: {source_names[selected_idx]}**")
+        else:
+            selected_sources = sources
+        
+        # Hiển thị nguồn được chọn
+        for i, src in enumerate(selected_sources):
             if isinstance(src, str):
                 prev = src
+                name = os.path.basename(src)
             else:
                 raw = src.read(); src.seek(0)
                 prev = build_data_uri(raw, src.type)
-            if prev.lower().endswith(".pdf") or prev.startswith("data:application/pdf"):
-                st.markdown(f'<iframe src="{prev}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
-            else:
-                st.image(prev)
+                name = src.name if hasattr(src, "name") else f"File {i+1}"
+            
+            # Tạo card với container để hiển thị file
+            if len(sources) == 1:  # Chỉ hiển thị tên file khi không có selectbox
+                st.write(f"**File: {name}**")
+            
+            preview_col = st.container()
+            with preview_col:
+                if prev.lower().endswith(".pdf") or prev.startswith("data:application/pdf"):
+                    # Sử dụng layout toàn màn hình cho PDF với chiều cao lớn hơn
+                    st.markdown(
+                        f"""
+                        <div style="width:100%; height:90vh; overflow:hidden; border:1px solid #ccc; border-radius:5px; margin-bottom:20px;">
+                            <iframe src="{prev}" width="100%" height="100%" 
+                                style="transform:scale(1); transform-origin:top left; border:none;"
+                                allowfullscreen></iframe>
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
+                else:
+                    # Hiển thị ảnh với kích thước tối đa
+                    st.image(prev, use_container_width=True)
+                    st.markdown(
+                        """
+                        <div style="text-align:center; margin-top:-15px; margin-bottom:15px;">
+                            <small>💡 Nhấn vào ảnh để xem phóng to</small>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+else:
+    preview_container.empty()
 
 # ============================================================
 # Thực hiện OCR  (khi ocr_running == True)
@@ -214,14 +366,17 @@ if st.session_state["ocr_running"] and sources:
     total = len(sources)
 
     for i, src in enumerate(sources, 1):
-        name = src.name if hasattr(src, "name") else os.path.basename(src) if isinstance(src, str) else f"file_{i}"
+        name = src.name if hasattr(src, "name") else (os.path.basename(src) if isinstance(src, str) else f"file_{i}")
         try:
             if isinstance(src, str):  # URL
                 with st.spinner(f"Tải {name} từ URL..."):
                     # Gửi URL trực tiếp đến API thay vì tải trước
                     res = requests.post(
                         API_URL,
-                        data={"url": src}
+                        data={
+                            "url": src,
+                            "api_key": st.session_state.get("current_api_key", "")
+                        }
                     )
                     res.raise_for_status()
                     data = res.json()
@@ -234,9 +389,11 @@ if st.session_state["ocr_running"] and sources:
                 # OCR qua API
                 with st.spinner(f"OCR {name} ..."):
                     files = {"file": (name, raw, src.type)}
+                    data = {"api_key": st.session_state.get("current_api_key", "")}
                     res = requests.post(
                         API_URL,
-                        files=files
+                        files=files,
+                        data=data
                     )
                     res.raise_for_status()
                     data = res.json()
@@ -284,20 +441,58 @@ if st.session_state.get("current_session"):
     data = st.session_state["history"][st.session_state["current_session"]]
 
     st.markdown("---"); st.header(f"Kết quả phiên: {st.session_state['current_session']}")
-
-    for idx, fname in enumerate(data["names"], 1):
-        prev = data["previews"][idx - 1]
+    
+    # Thêm selectbox để dễ dàng chọn nguồn khi có nhiều kết quả
+    if len(data["names"]) > 1:
+        st.write(f"**Số kết quả: {len(data['names'])}**")
+        selected_idx = st.selectbox(
+            "Chọn nguồn để xem kết quả:",
+            range(len(data["names"])),
+            format_func=lambda i: data["names"][i],
+            key="results_selectbox"
+        )
+        # Hiển thị chỉ nguồn được chọn
+        selected_indices = [selected_idx]
+        st.write(f"**Đang xem: {data['names'][selected_idx]}**")
+    else:
+        # Hiển thị tất cả nếu chỉ có 1 nguồn
+        selected_indices = range(len(data["names"]))
+    
+    # Hiển thị cho mỗi nguồn được chọn
+    for selected_idx in selected_indices:
+        fname = data["names"][selected_idx]
+        prev = data["previews"][selected_idx]
         text = data["results"][fname]
 
-        st.markdown(f"### Nguồn {idx}: {fname}")
+        # Chỉ hiển thị số nguồn nếu không có selectbox
+        if len(data["names"]) == 1:
+            st.markdown(f"### Nguồn: {fname}")
+        
         tab1, tab2, tab3 = st.tabs(["Gốc", "So sánh", "Tải xuống / Chỉnh sửa"])
 
         # ---------- Tab Gốc ----------
         with tab1:
             if prev.lower().endswith(".pdf") or "application/pdf" in prev:
-                st.markdown(f'<iframe src="{prev}" width="100%" height="800"></iframe>', unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    <div style="width:100%; height:90vh; overflow:hidden; border:1px solid #ccc; border-radius:5px; margin-bottom:20px;">
+                        <iframe src="{prev}" width="100%" height="100%" 
+                            style="transform:scale(1); transform-origin:top left; border:none;"
+                            allowfullscreen></iframe>
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
             else:
-                st.image(prev)
+                st.image(prev, use_container_width=True)
+                st.markdown(
+                    """
+                    <div style="text-align:center; margin-top:-15px; margin-bottom:15px;">
+                        <small>💡 Nhấn vào ảnh để xem phóng to</small>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
         # ---------- Tab So sánh ----------
         with tab2:
@@ -305,20 +500,37 @@ if st.session_state.get("current_session"):
             with c1:
                 st.markdown("**File gốc**")
                 if prev.lower().endswith(".pdf") or "application/pdf" in prev:
-                    st.markdown(f'<iframe src="{prev}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
+                    st.markdown(
+                        f"""
+                        <div style="width:100%; height:70vh; overflow:hidden; border:1px solid #ccc; border-radius:5px;">
+                            <iframe src="{prev}" width="100%" height="100%" 
+                                style="transform:scale(1); transform-origin:top left; border:none;"
+                                allowfullscreen></iframe>
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
                 else:
-                    st.image(prev)
+                    st.image(prev, use_container_width=True)
             with c2:
                 st.markdown("**Text OCR**")
-                st.code(text, language="markdown")
+                # Sử dụng container có thể cuộn với chiều cao phù hợp với khung PDF
+                st.markdown(
+                    f"""
+                    <div style="width:100%; height:70vh; overflow:auto; border:1px solid #ccc; border-radius:5px; padding:10px; font-family:monospace; white-space:pre-wrap;">
+                    {text.replace("<", "&lt;").replace(">", "&gt;")}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
         # ---------- Tab Tải xuống / Chỉnh sửa ----------
         with tab3:
-            edited_key = f"edited_{st.session_state['current_session']}_{idx}"
+            edited_key = f"edited_{st.session_state['current_session']}_{selected_idx}"
             edited_text = st.text_area("Chỉnh sửa nội dung:", text, height=400, key=edited_key)
 
             # Chọn định dạng → tự tải
-            fmt_key = f"fmt_{st.session_state['current_session']}_{idx}"
+            fmt_key = f"fmt_{st.session_state['current_session']}_{selected_idx}"
             fmt = st.selectbox("Định dạng tải xuống", ["TXT", "MD", "JSON"], key=fmt_key)
 
             if fmt == "TXT":
@@ -329,7 +541,7 @@ if st.session_state.get("current_session"):
                 bytes_data = json.dumps({"result": edited_text}, ensure_ascii=False, indent=2).encode(); mime, ext = "application/json", "json"
 
             # Auto-download khi đổi fmt (dựa trên state so sánh)
-            last_key = f"last_fmt_{st.session_state['current_session']}_{idx}"
+            last_key = f"last_fmt_{st.session_state['current_session']}_{selected_idx}"
             if st.session_state.get(last_key) != fmt:
                 st.session_state[last_key] = fmt
                 auto_download(bytes_data, mime, f"{os.path.splitext(fname)[0]}.{ext}")
@@ -338,5 +550,5 @@ if st.session_state.get("current_session"):
             st.download_button(
                 label=f"Tải {ext.upper()} (thủ công)", data=bytes_data,
                 file_name=f"{os.path.splitext(fname)[0]}.{ext}", mime=mime,
-                key=f"dl_btn_{idx}_{ext}"
+                key=f"dl_btn_{selected_idx}_{ext}"
             )

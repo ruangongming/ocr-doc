@@ -8,8 +8,28 @@ logger = utils.setup_logging()
 
 # Must point at the `/ocr` endpoint on the OCR‐service
 OCR_URL = utils.get_env("OCR_SERVICE_URL", "http://ocr-service:9000/ocr")
+OCR_BASE_URL = OCR_URL.rsplit("/", 1)[0]  # Remove /ocr to get base URL
 
-def call_ocr(raw_bytes: bytes, filename: str = "upload.pdf", content_type: str = None) -> dict:
+def validate_api_key(api_key: str) -> bool:
+    """
+    Validate an API key by calling the validation endpoint on the OCR service.
+    Returns True if the key is valid, False otherwise.
+    """
+    try:
+        # Call the validation endpoint on the OCR service
+        resp = requests.post(
+            f"{OCR_BASE_URL}/validate_api_key",
+            json={"api_key": api_key},
+            timeout=10
+        )
+        
+        # Return True only if status code is 200
+        return resp.status_code == 200
+    except Exception as e:
+        logger.error(f"Error validating API key: {str(e)}")
+        return False
+
+def call_ocr(raw_bytes: bytes, filename: str = "upload.pdf", content_type: str = None, api_key: str = None) -> dict:
     """
     Send raw bytes to OCR‐service and return its full JSON:
       {
@@ -37,6 +57,11 @@ def call_ocr(raw_bytes: bytes, filename: str = "upload.pdf", content_type: str =
             "file": (filename, raw_bytes, content_type)
         }
         
+        # Add API key if provided
+        headers = {}
+        if api_key:
+            headers["X-API-Key"] = api_key
+        
         # Add file hash to logging
         file_hash = utils.compute_file_hash(raw_bytes)
         file_info = utils.extract_file_info(filename)
@@ -45,6 +70,7 @@ def call_ocr(raw_bytes: bytes, filename: str = "upload.pdf", content_type: str =
         resp = requests.post(
             OCR_URL,
             files=files,
+            headers=headers,
             timeout=60  # Increased timeout for larger files
         )
         resp.raise_for_status()

@@ -1,11 +1,12 @@
 # api/app/main.py
 
 import os
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Query, Body, Header
 from fastapi.middleware.cors import CORSMiddleware
 from ocr_doc_utils import utils, postprocess, schemas
-from .ocr_service_client import call_ocr
+from .ocr_service_client import call_ocr, validate_api_key
 import requests
+from typing import Dict
 
 logger = utils.setup_logging()
 app = FastAPI()
@@ -22,7 +23,9 @@ app.add_middleware(
 @app.post("/ocr", response_model=schemas.OCRResponse)
 async def ocr_endpoint(
     file: UploadFile = File(None),
-    url: str = Form(None)
+    url: str = Form(None),
+    api_key: str = Form(None),
+    x_api_key: str = Header(None)
 ):
     """
     1) Nhận file upload (bytes) hoặc URL
@@ -36,6 +39,9 @@ async def ocr_endpoint(
             status_code=400,
             detail="Vui lòng cung cấp file upload hoặc URL"
         )
+    
+    # Prefer form data API key over header
+    effective_api_key = api_key or x_api_key
     
     # Trường hợp URL
     if url:
@@ -60,7 +66,7 @@ async def ocr_endpoint(
 
     # --- gọi service ---
     try:
-        data = call_ocr(raw, filename=filename, content_type=content_type)
+        data = call_ocr(raw, filename=filename, content_type=content_type, api_key=effective_api_key)
     except HTTPException:
         # service trả HTTPException rồi, chỉ re-raise
         raise
@@ -93,6 +99,36 @@ async def ocr_endpoint(
         markdown=md,
         raw_json=raw_json
     )
+
+@app.post("/ocr/validate")
+async def validate_api_key_endpoint(data: Dict[str, str] = Body(...)):
+    """
+    Validate an API key by making a lightweight call to the OCR service
+    
+    Body:
+    {
+        "api_key": "your-api-key"
+    }
+    
+    Returns:
+    {
+        "valid": true/false,
+        "message": "Success or error message"
+    }
+    """
+    api_key = data.get("api_key")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API key is required")
+    
+    try:
+        is_valid = validate_api_key(api_key)
+        if is_valid:
+            return {"valid": True, "message": "API key is valid"}
+        else:
+            return {"valid": False, "message": "API key is invalid"}
+    except Exception as e:
+        logger.error(f"API key validation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error validating API key: {str(e)}")
 
 @app.get("/health")
 def health_check():
