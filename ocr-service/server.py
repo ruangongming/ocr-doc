@@ -63,16 +63,26 @@ async def do_ocr(file: UploadFile = File(...), background_tasks: BackgroundTasks
             include_image_base64=True
         )
         
-        # 7) Lấy text từ kết quả
+        # 7) Lấy text từ kết quả - GIỮ ĐỊNH DẠNG
         texts = []
-        for page in ocr_result.pages:
-            texts.append(page.markdown)
+        for i, page in enumerate(ocr_result.pages):
+            # Nếu có nhiều trang, đánh dấu rõ ràng ranh giới giữa các trang
+            if len(ocr_result.pages) > 1:
+                page_header = f"--- Trang {i+1}/{len(ocr_result.pages)} ---\n\n"
+                texts.append(page_header + page.markdown)
+            else:
+                texts.append(page.markdown)
         
-        combined_text = "\n\n".join(texts)
+        # Kết hợp văn bản với ngắt trang rõ ràng
+        combined_text = "\n\n" + "\n\n" + "\n\n".join(texts)
+        
+        # Áp dụng hậu xử lý nhưng giữ định dạng
         clean_text = postprocess.correct(combined_text)
         
-        # 8) Tạo markdown 
-        markdown = f"```txt\n{clean_text}\n```"
+        # 8) Tạo markdown có định dạng tốt hơn
+        markdown = f"""```markdown
+{clean_text}
+```"""
         
         # 9) Chuẩn bị kết quả
         json_result = {

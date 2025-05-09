@@ -315,7 +315,7 @@ if st.session_state.get("current_session"):
         # ---------- Tab Tải xuống / Chỉnh sửa ----------
         with tab3:
             edited_key = f"edited_{st.session_state['current_session']}_{idx}"
-            edited_text = st.text_area("Chỉnh sửa nội dung:", text, height=250, key=edited_key)
+            edited_text = st.text_area("Chỉnh sửa nội dung:", text, height=400, key=edited_key)
 
             # Chọn định dạng → tự tải
             fmt_key = f"fmt_{st.session_state['current_session']}_{idx}"
